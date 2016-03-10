@@ -1,47 +1,53 @@
 ---
 title: "MATH 216 Homework 1"
-author: "WRITE YOUR NAME HERE"
+author: "Joy Wood"
 output: html_document
 ---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
 
-```{r, echo=FALSE, message=FALSE, cache=TRUE}
+```{r, echo=FALSE, message = FALSE, warnings = FALSE}
 # DO NOT EDIT THIS SECTION
-
 # Load packages
+
+suppressPackageStartupMessages(library(maps))
+suppressPackageStartupMessages(library(zoo))
 suppressPackageStartupMessages(library(ggplot2))
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(lubridate))
 
+```
+```{r, echo=FALSE, message=FALSE, cache=TRUE}
 # Load data sets. Note this assumes this .Rmd files is in the same directory as
 # the .csv files.
 flights <- read.csv("data/flights.csv", stringsAsFactors = FALSE) %>% 
-  tbl_df() %>%
-  mutate(date=as.Date(date))
+ tbl_df() %>%
+ mutate(date=as.Date(date))
 weather <- read.csv("data/weather.csv", stringsAsFactors = FALSE) %>% 
-  tbl_df() %>%
-  mutate(date=as.Date(date))
+ tbl_df() %>%
+ mutate(date=as.Date(date))
 planes <- read.csv("data/planes.csv", stringsAsFactors = FALSE) %>% 
-  tbl_df()
+ tbl_df()
 airports <- read.csv("data/airports.csv", stringsAsFactors = FALSE) %>% 
-  tbl_df()
+ tbl_df()
 states <- read.csv("data/states.csv", stringsAsFactors = FALSE) %>% 
+ tbl_df()
+names <- read.csv("airlines.csv", stringsAsFactors = FALSE) %>% 
+  tbl_df()
+state_names <- read.csv("state_table.csv", stringsAsFactors = FALSE) %>% 
   tbl_df()
 ```
-
-
-
 
 
 ## Admistrative:
 
 Please indicate
 
-* Who you collaborated with:
-* Roughly how much time you spent on this HW:
-* What gave you the most trouble:
-* Any comments you have:
-
-
+* Who you collaborated with: Delaney, Kyler, Christian
+* Roughly how much time you spent on this HW: 11 hours
+* What gave you the most trouble: Spun my wheels more than I should have, wasn't sure how to represent things, little syntactical issues, knitting the file
+* Any comments you have: I'm still not sure how much I should be writing. I feel like the graphs say more than I can. I'm still getting weird warnings in my knit html even though I tried to suppress warnings.I also needed extra packages and an extra csv file to label the airlines. I'll try to attach that, but not sure how.
 
 
 
@@ -50,30 +56,100 @@ Please indicate
 * Plot a "time series" of the proportion of flights that were delayed by > 30 minutes on each day.  i.e.
     + the x-axis should be some notion of time
     + the y-axis should be the proportion.
+    
+    
 * Which seasons did we tend to see the most and least delays of > 30 minutes.
 
-```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+```{r, echo=FALSE, message = FALSE, warnings = FALSE, fig.width=12, fig.height=6}
+#create season var in flights
+yq <- as.yearqtr(as.yearmon(flights$date, "%m/%d/%Y") + 1/12)
+flights$season <- factor(format(yq, "%q"), levels = 1:4, 
+                      labels = c("Winter", "Spring", "Summer", "Fall"))
+
+#daily vars
+daily_flights = flights %>%
+  group_by(date) %>%
+  tally()%>%
+  rename(total=n)
+
+daily_delays = flights %>%
+  group_by(date) %>%
+  filter(dep_delay > 30)  %>%
+  tally()%>%
+  rename(delayed=n)
+
+
+#seasonal vars
+seasonal_flights = flights %>%
+  group_by(season) %>%
+  tally()%>%
+  rename(seasonal_flights=n)
+
+seasonal_delays = flights %>%
+  group_by(season) %>%
+  filter(dep_delay > 30)  %>%
+  tally()%>%
+  rename(seasonal_delayed=n)
+
+temp = full_join(seasonal_delays,seasonal_flights)
+temp = mutate(temp, seasonal_proportion = round(seasonal_delayed/seasonal_flights, 2))
+
+proportions = full_join(daily_delays,daily_flights)
+proportions = mutate(proportions, daily_proportion = round(delayed/total, 2))
+
+#create season var in proportions
+yq <- as.yearqtr(as.yearmon(proportions$date, "%m/%d/%Y") + 1/12)
+proportions$season <- factor(format(yq, "%q"), levels = 1:4, 
+                         labels = c("Winter", "Spring", "Summer", "Fall"))
+#merge
+full_data_proportions = full_join(proportions, temp)
+
+
+#scatter plot for delay by day
+ggplot(full_data_proportions, aes(x = date, y = daily_proportion, colour=season))+ 
+  geom_point()+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 40, hjust = 1))+
+  xlab("")+
+  ylab("")+
+  ggtitle("Proportion of Flights Delayed Over Time")
 
 ```
 
+A simple scatter plot provides a quick and easy time series variation of delayed flights from Houston. The X axis represents the progression of time, and the Y axis shows the proportion of delays. The vast majority of days experience no more than 20% delays, though there are outliers. There was a day in June during which more than 50% of total flights were delayed. 
 
-
-
+I was initially surprised to see that there is no immediately obvious correlation between proportion of delays and season, and in fact, summer seems to be the season with the most delays. A Northerner at heart, I assumed winter, and perhaps spring would see the most delayed flights. It took me a second to remind myself that winter weather patterns in Houston are not comparable to Middlebury's!
 
 ## Question 2:
 
 Some people prefer flying on older planes.  Even though they aren't as nice,
 they tend to have more room.  Which airlines should these people favor?
 
-```{r, echo=FALSE, fig.width=12, fig.height=6}
+```{r, echo=FALSE, fig.width=12, fig.height=6, message = FALSE, warnings = FALSE}
+#merge planes and flights
+data <- full_join(flights, planes)
+data = data %>%
+  select(carrier, plane, year)%>%
+  full_join(names)
+
+
+age_table = data  %>%
+  filter(!is.na(year))%>%
+  group_by(name)  %>%
+  summarise(year = round(mean(year), digits = 0)) %>%
+  arrange(year)
+
+ggplot(data, aes(x=name, y=year)) + 
+  geom_boxplot()+
+  xlab("Airline")+
+  ylab("Year Plane Built")+
+  ggtitle("Plane Age by Airline")+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 40, hjust = 1))
 
 ```
 
-
-
-
-
-
+Looking at only the average production year of planes, a passenger prefering extra room may be led to believe that American Eagle, American Airlines, or Delta are the only safe choices, but a box and whisker plot shows some interesting variation. American Airlines and Continental have the absolute oldest planes in flight. US Airways has a nice, low average year of production, but plenty of newer outliers. Fly Alaska Airlines if you'd trade leg room for newer planes.
 
 ## Question 3:
 
@@ -81,25 +157,105 @@ they tend to have more room.  Which airlines should these people favor?
 * What states did all Southwest Airlines flights tend to fly to?
 
 
-```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+```{r, echo=FALSE, message = FALSE, warnings = FALSE, fig.width=12, fig.height=6}
 
+flights_airports <- left_join(flights, airports, by = c("dest" = "iata"))
+flights_airports <- left_join(flights_airports, state_names)
+
+
+flights_states = flights_airports %>% 
+  filter(carrier == "WN") %>% 
+  group_by(name) %>% 
+  tally() %>% 
+  rename(count = n)
+
+flights_unique <- flights_airports %>% 
+  filter(carrier == "WN") %>% 
+  distinct(flight) %>% 
+  group_by(name) %>% 
+  tally() %>% 
+  rename(unique = n)
+
+# barplots
+ggplot(data=flights_states, aes(x = name, y = count))+
+  geom_bar(stat = "identity")+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 40, hjust = 1))+
+  labs(title = "All Southwest Flights by State", x = "State", y = "Number of Flights")
+
+ggplot(data=flights_unique, aes(x = name, y = unique))  +
+  geom_bar(stat = "identity") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 40, hjust = 1))+
+  labs(title = "Southwest Unique Routes by State", x = "State", y = "Number of Flights")
+
+flights_unique$name = tolower(flights_unique$name)
+flights_states$name = tolower(flights_states$name)
+state_geo_data = map_data("state")
+names(flights_unique) = c("region", "unique")
+names(flights_states) = c("region", "flights")
+
+flights_unique_merged <- merge(state_geo_data, flights_unique, sort = FALSE, by = "region")
+flights_unique_merged <- flights_unique_merged[order(flights_unique_merged$order), ]
+
+flights_states_merged <- merge(state_geo_data, flights_states, sort = FALSE, by = "region")
+flights_states_merged <- flights_states_merged[order(flights_states_merged$order), ]
+
+ggplot(flights_unique_merged, aes(x=long,y=lat,group=group))+
+  geom_polygon(aes(fill=unique))+
+  geom_path()+ 
+  theme_minimal()+
+  scale_fill_gradientn(colours=rev(heat.colors(10)),na.value="grey90")+
+  theme(axis.ticks = element_blank(), axis.text.x = element_blank(), axis.text.y = element_blank())+
+  coord_map()+
+  xlab("")+
+  ylab("")+
+  guides(fill=guide_legend(title="Unique Routes"))
+
+
+ggplot(flights_states_merged, aes(x=long,y=lat,group=group))+
+  geom_polygon(aes(fill=flights))+
+  geom_path()+ 
+  theme_minimal()+
+  scale_fill_gradientn(colours=rev(heat.colors(10)),na.value="grey90")+
+  theme(axis.ticks = element_blank(), axis.text.x = element_blank(), axis.text.y = element_blank())+
+  coord_map()+
+  xlab("")+
+  ylab("")+
+  guides(fill=guide_legend(title="Total Flights"))
 ```
 
-
-
+Southwest Airlines flies to only 19 states from Houston, many of which are in the south, or at least in the west. Illinois, New Jersey, and Pennsylvania stand out as outliers. But in-state flights truly dominate Southwest routes out of Houston, with nearly 600 unique flights to other locations in Texas. Number of unique routes seems to be a decent predictor of over all flights, and once again, Texas reigns. A handy heatmap shows the same thing. 
 
 
 ## Question 4:
 
 What weather patterns are associated with the biggest departure delays?
 
-```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+```{r, echo=FALSE, message = FALSE, warnings = FALSE, fig.width=12, fig.height=6}
+
+    flights_weather <- left_join(flights, weather, by = c("date", "hour"))
+
+    model <- lm(flights_weather$dep_delay ~ as.factor(flights_weather$conditions))
+
+    flights_weather <- flights_weather %>% 
+     group_by(conditions)%>%
+     summarise(a  = round(mean(dep_delay), digits = 0)) %>%
+     arrange(desc(a))
+   
+   #Average Delays by Weather Condition Bar Plot
+   ggplot(data=flights_weather, aes(x=conditions, y=a)) +
+     theme_minimal()+
+     geom_bar(stat="identity")+
+     theme(axis.text.x = element_text(angle = 40, hjust = 1))+
+     xlab("Condition")+
+     ylab("Average Delay in Minutes")+
+     ggtitle("Average Delays by Weather Condition")
+   
 
 ```
 
-
-
-
+Overall largest average departure delays are caused by freezing rain, followed by (drum roll please) light freezing rain. When experiencing freezing rain, average delays were well over 200 minutes.  Rarely are other conditions associated with delays of even 25 minutes. Perhaps this representation of the data could be misleading, or rather, largely irrelevant,  as freezing rain is a rare occurrence in Houston, and the dramatic average delay we see on the graph may be the product of several unusually long delays, rather than a meaningful trend. Furthermore, a quick regression shows that these weather conditions alone are a rather poor predictor of delays, the r-squared for such a regression is 0.005319, implying that these condition classifications explain only 0.05% of the variation in departure delays. 
 
 ## Question 5:
 
@@ -107,6 +263,44 @@ I want to know what proportionately regions (NE, south, west, midwest) each
 carrier flies to from Houston in the month of July.  Consider the `month()`
 function from the `lubridate` package.
 
-```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+```{r, echo=FALSE, message = FALSE, warnings = FALSE, fig.width=12, fig.height=6}
 
+
+flights_in_july = left_join(flights_airports, states, by = "state")
+
+flights_in_july =flights_in_july %>% 
+     mutate(month = month(date))%>% 
+     filter(month == 7)  
+     
+
+
+flights_by_carrier = flights_in_july %>% 
+  group_by(carrier) %>% 
+  tally() %>% 
+  rename(count_by_carrier=n)
+
+
+temp = 
+  left_join(flights_in_july, flights_by_carrier) %>% 
+  select(carrier, region, count_by_carrier) %>% 
+  count(carrier, region) %>% 
+  rename(count_by_carrier_and_region=n)
+
+
+flights_in_july = left_join(flights_in_july, temp) 
+flights_in_july = flights_in_july %>% select(carrier, region, count_by_carrier_and_region)
+
+
+flights_in_july = left_join(flights_in_july, flights_by_carrier) 
+
+flights_in_july = unique(flights_in_july) 
+flights_in_july = mutate(flights_in_july, proportions_region = count_by_carrier_and_region/count_by_carrier)  
+
+
+plot = ggplot(flights_in_july, aes(x = factor(region), y = proportions_region)) + geom_bar(stat = "identity", aes (fill = flights_in_july$region))
+plot+facet_wrap(~carrier, ncol = 3) +theme(axis.text.x = element_text(angle = 40, hjust = 1))+xlab("") +ylab("") + 
+  ggtitle("Regional Flights by Carrier")+theme(axis.ticks = element_blank(), axis.text.x = element_blank())+
+  scale_fill_discrete("Region")
 ```
+
+It turns out, airlines are quite different in the regions that they fly to. Certain airlines seem to fly to very specific regions, with American Eagle (AA), Alaska Airlines (AS), JetBlue (B6), Mesa (YV) and Frontier (F9), being prime examples of this specialization. Other airlines tend to diversify more, with carriers like Continental and Southwest reaching nearly every region of the United States directly from Houston.
